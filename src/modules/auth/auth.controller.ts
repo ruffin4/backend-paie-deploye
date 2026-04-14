@@ -57,7 +57,8 @@ export class AuthController {
   @ApiResponse({ status: 401, description: 'Utilisateur non authentifié' })
   async getProfile(@Request() req) {
     // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment, @typescript-eslint/no-unsafe-member-access
-    const userId = req.user.id; // req.user est déjà peuplé par JwtAuthGuard
+    const userId = req.user.uuid; // req.user est déjà peuplé par JwtAuthGuard
+    // eslint-disable-next-line @typescript-eslint/no-unsafe-argument
     const user = await this.authService.getProfile(userId);
     return {
       message: 'Profil récupéré avec succès',

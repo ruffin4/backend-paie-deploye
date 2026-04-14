@@ -8,8 +8,8 @@ import {
 
 @Entity('users')
 export class UserEntity {
-  @PrimaryGeneratedColumn()
-  id!: number;
+  @PrimaryGeneratedColumn('uuid')
+  uuid!: string;
 
   @Column({ unique: true })
   email!: string;
@@ -25,10 +25,10 @@ export class UserEntity {
 
   @Column({
     type: 'enum',
-    enum: ['ADMIN', 'USER', 'GESTIONNAIRE'],
-    default: 'USER',
+    enum: ['ADMIN', 'GESTIONNAIRE'],
+    default: 'GESTIONNAIRE',
   })
-  role!: 'ADMIN' | 'USER' | 'GESTIONNAIRE';
+  role!: 'ADMIN' | 'GESTIONNAIRE';
 
   @CreateDateColumn({ name: 'created_at' })
   createdAt!: Date;

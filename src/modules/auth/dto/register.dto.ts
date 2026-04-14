@@ -34,12 +34,12 @@ export class RegisterDto {
   prenom?: string;
 
   @ApiProperty({
-    example: 'USER',
+    example: 'GESTIONNAIRE',
     description: 'Rôle',
-    enum: ['ADMIN', 'USER', 'GESTIONNAIRE'],
+    enum: ['ADMIN', 'GESTIONNAIRE'],
     required: false,
   })
-  @IsEnum(['ADMIN', 'USER', 'GESTIONNAIRE'])
+  @IsEnum(['ADMIN', 'GESTIONNAIRE'])
   @IsOptional()
   role?: UserRole;
 }

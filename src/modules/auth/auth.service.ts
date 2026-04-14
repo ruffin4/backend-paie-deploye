@@ -36,7 +36,9 @@ export class AuthService {
   }
 
   private async createDefaultAdmin() {
-    const adminEmail = 'admin@payroll.mg';
+    const adminEmail =
+      this.configService.get<string>('DEFAULT_ADMIN_EMAIL') ??
+      'admin@payroll.mg';
     const adminExists = await this.userRepository.findOne({
       where: { email: adminEmail },
     });
@@ -45,18 +47,24 @@ export class AuthService {
       try {
         const saltRounds = this.getSaltRounds();
         const salt = await bcrypt.genSalt(saltRounds);
-        const hashedPassword = await bcrypt.hash('admin123', salt);
+        const adminPassword =
+          this.configService.get<string>('DEFAULT_ADMIN_PASSWORD') ??
+          'admin123';
+        const hashedPassword = await bcrypt.hash(adminPassword, salt);
 
         const admin = this.userRepository.create({
           email: adminEmail,
           passwordHash: hashedPassword,
-          nom: 'Admin',
-          prenom: 'System',
+          nom: this.configService.get<string>('DEFAULT_ADMIN_NOM') ?? 'Admin',
+          prenom:
+            this.configService.get<string>('DEFAULT_ADMIN_PRENOM') ?? 'System',
           role: 'ADMIN',
         });
 
         await this.userRepository.save(admin);
-        console.log('✅ Admin par défaut créé: admin@payroll.mg / admin123');
+        console.log(
+          `✅ Admin par défaut créé: ${adminEmail} / ${this.configService.get<string>('DEFAULT_ADMIN_PASSWORD') ?? 'admin123'}`,
+        );
       } catch (err: unknown) {
         // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
         const errorMessage =
@@ -94,14 +102,14 @@ export class AuthService {
       passwordHash: hashedPassword,
       nom: registerDto.nom,
       prenom: registerDto.prenom,
-      role: registerDto.role ?? 'USER',
+      role: registerDto.role ?? 'GESTIONNAIRE',
     });
 
     const saved = await this.userRepository.save(user);
 
     // Générer le token JWT
     const payload = {
-      sub: saved.id,
+      sub: saved.uuid,
       email: saved.email,
       role: saved.role,
     };
@@ -110,7 +118,7 @@ export class AuthService {
     return {
       access_token,
       user: {
-        id: saved.id,
+        uuid: saved.uuid,
         email: saved.email,
         nom: saved.nom,
         prenom: saved.prenom,
@@ -141,7 +149,7 @@ export class AuthService {
 
     // Générer le token JWT
     const payload = {
-      sub: user.id,
+      sub: user.uuid,
       email: user.email,
       role: user.role,
     };
@@ -150,7 +158,7 @@ export class AuthService {
     return {
       access_token,
       user: {
-        id: user.id,
+        uuid: user.uuid,
         email: user.email,
         nom: user.nom,
         prenom: user.prenom,
@@ -158,28 +166,26 @@ export class AuthService {
       },
     };
   }
-
-  async validateUserById(id: number): Promise<IUserResponse | null> {
-    const user = await this.userRepository.findOne({ where: { id } });
+  async validateUserById(id: string): Promise<IUserResponse | null> {
+    const user = await this.userRepository.findOne({ where: { uuid: id } });
     if (!user) return null;
 
     return {
-      id: user.id,
+      uuid: user.uuid,
       email: user.email,
       nom: user.nom,
       prenom: user.prenom,
       role: user.role,
     };
   }
-
-  async getProfile(userId: number): Promise<IUserResponse> {
-    const user = await this.userRepository.findOne({ where: { id: userId } });
+  async getProfile(userId: string): Promise<IUserResponse> {
+    const user = await this.userRepository.findOne({ where: { uuid: userId } });
     if (!user) {
       throw new UnauthorizedException('Utilisateur non trouvé');
     }
 
     return {
-      id: user.id,
+      uuid: user.uuid,
       email: user.email,
       nom: user.nom,
       prenom: user.prenom,

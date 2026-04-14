@@ -1,5 +1,5 @@
 export interface IUser {
-  id: number;
+  uuid: string;
   email: string;
   passwordHash: string;
   nom?: string;
@@ -9,10 +9,10 @@ export interface IUser {
   updatedAt: Date;
 }
 
-export type UserRole = 'ADMIN' | 'USER' | 'GESTIONNAIRE';
+export type UserRole = 'ADMIN' | 'GESTIONNAIRE';
 
 export interface IUserResponse {
-  id: number;
+  uuid: string;
   email: string;
   nom?: string;
   prenom?: string;
