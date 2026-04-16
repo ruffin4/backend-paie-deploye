@@ -4,6 +4,7 @@ import {
   PrimaryGeneratedColumn,
   CreateDateColumn,
   UpdateDateColumn,
+  OneToMany,
 } from 'typeorm';
 
 export enum TypeContrat {
@@ -66,6 +67,10 @@ export class EmployeEntity {
 
   @UpdateDateColumn({ name: 'updated_at' })
   updatedAt!: Date;
+
+  // Relation OneToMany vers VariableMensuelle
+  @OneToMany('VariableMensuelleEntity', 'employe')
+  variablesMensuelles!: any[];
 }
 
 export default EmployeEntity;
