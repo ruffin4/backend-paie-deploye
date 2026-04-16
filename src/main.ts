@@ -38,20 +38,6 @@ async function bootstrap() {
     .setTitle('Payroll Madagascar API')
     .setDescription('API pour la gestion des fiches de paie à Madagascar')
     .setVersion('1.0')
-    .addTag('auth', 'Authentification et gestion des utilisateurs')
-    .addTag('employe', 'Gestion des employés')
-    .addTag('entreprise', 'Gestion des entreprises')
-    .addTag('bulletin', 'Gestion des bulletins de paie')
-    .addTag('cotisation', 'Gestion des cotisations')
-    .addTag('calcul-irsa', "Calcul de l'IRSA")
-    .addTag('barre-irsa', 'Gestion des barres IRSA')
-    .addTag('ligne-bulletin', 'Lignes des bulletins')
-    .addTag('ligne-calcul-irsa', 'Lignes de calcul IRSA')
-    .addTag('periode', 'Gestion des périodes')
-    .addTag('rapport', 'Génération de rapports')
-    .addTag('rubrique', 'Gestion des rubriques')
-    .addTag('variable-mensuelle', 'Variables mensuelles')
-    .addTag('historique-paie', 'Historique des paies')
     .addBearerAuth(
       {
         type: 'http',
@@ -67,12 +53,9 @@ async function bootstrap() {
 
   const document = SwaggerModule.createDocument(app, config);
 
-  // Appliquer la sécurité à tous les endpoints
-  document.security = [{ 'JWT-auth': [] }];
-
   SwaggerModule.setup('api-docs', app, document, {
     swaggerOptions: {
-      persistAuthorization: true, // Garde le token après rafraîchissement
+      persistAuthorization: false, // Garde le token après rafraîchissement
       authAction: {
         'JWT-auth': {
           name: 'JWT-auth',

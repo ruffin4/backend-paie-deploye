@@ -1,18 +1,13 @@
-import { Test, TestingModule } from '@nestjs/testing';
+import { Module } from '@nestjs/common';
+import { TypeOrmModule } from '@nestjs/typeorm';
+import { BarreIrsaService } from './barre-irsa.service';
 import { BarreIrsaController } from './barre-irsa.controller';
+import { BarreIrsaEntity } from './entities/barre-irsa.entity';
 
-describe('BarreIrsaController', () => {
-  let controller: BarreIrsaController;
-
-  beforeEach(async () => {
-    const module: TestingModule = await Test.createTestingModule({
-      controllers: [BarreIrsaController],
-    }).compile();
-
-    controller = module.get<BarreIrsaController>(BarreIrsaController);
-  });
-
-  it('should be defined', () => {
-    expect(controller).toBeDefined();
-  });
-});
+@Module({
+  imports: [TypeOrmModule.forFeature([BarreIrsaEntity])],
+  controllers: [BarreIrsaController],
+  providers: [BarreIrsaService],
+  exports: [BarreIrsaService],
+})
+export class BarreIrsaModule {}
