@@ -1,4 +1,3 @@
-/* eslint-disable @typescript-eslint/restrict-template-expressions */
 import {
   Injectable,
   NotFoundException,
@@ -6,7 +5,7 @@ import {
   BadRequestException,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository, LessThan, MoreThan } from 'typeorm';
+import { Repository } from 'typeorm';
 import {
   CotisationEntity,
   TypeBaseCotisation,
@@ -70,14 +69,15 @@ export class CotisationService {
 
   async findActive(): Promise<CotisationEntity[]> {
     const now = new Date();
-    return this.cotisationRepository.find({
-      where: {
-        actif: true,
-        dateDebut: LessThan(now),
-        dateFin: MoreThan(now),
-      },
-      order: { code: 'ASC' },
-    });
+
+    // Méthode 1: Avec QueryBuilder (recommandée)
+    return this.cotisationRepository
+      .createQueryBuilder('c')
+      .where('c.actif = :actif', { actif: true })
+      .andWhere('c.dateDebut <= :now', { now })
+      .andWhere('(c.dateFin IS NULL OR c.dateFin >= :now)', { now })
+      .orderBy('c.code', 'ASC')
+      .getMany();
   }
 
   async findOne(uuid: string): Promise<CotisationEntity> {
