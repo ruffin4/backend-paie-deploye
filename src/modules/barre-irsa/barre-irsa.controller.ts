@@ -85,6 +85,12 @@ export class BarreIrsaController {
     description: 'Base imposable en Ariary',
   })
   @ApiQuery({
+    name: 'enfants',
+    required: false,
+    type: Number,
+    description: "Nombre d'enfants à charge (défaut: 0)",
+  })
+  @ApiQuery({
     name: 'date',
     required: false,
     description: "Date du calcul (par défaut: aujourd'hui)",
@@ -93,13 +99,228 @@ export class BarreIrsaController {
   @ApiBadRequestResponse({ description: 'Aucun barème actif trouvé' })
   async calculerImpot(
     @Query('baseImposable') baseImposable: string,
+    @Query('enfants') enfants?: string,
     @Query('date') date?: string,
   ): Promise<ResultatCalculImpot> {
     const result = await this.barreIrsaService.calculerImpot(
       parseFloat(baseImposable),
+      enfants ? parseInt(enfants) : 0,
       date ? new Date(date) : new Date(),
     );
     return result;
+  }
+  @Get('calcul/depuis-brut')
+  @Public()
+  @ApiOperation({
+    summary:
+      "Calculer l'impôt à partir du salaire brut (automatique avec abattement 2%)",
+  })
+  @ApiQuery({ name: 'brut', type: Number, description: 'Salaire brut total' })
+  @ApiQuery({
+    name: 'enfants',
+    required: false,
+    type: Number,
+    description: "Nombre d'enfants à charge (défaut: 0)",
+  })
+  @ApiOkResponse({ description: 'Calcul effectué avec succès' })
+  @ApiBadRequestResponse({ description: 'Paramètre invalide' })
+  async calculerImpotDepuisBrut(
+    @Query('brut') brut: string,
+    @Query('enfants') enfants?: string,
+  ) {
+    const brutTotal = parseFloat(brut);
+    if (isNaN(brutTotal)) {
+      return {
+        message: 'Erreur: le paramètre "brut" doit être un nombre valide',
+        error: true,
+      };
+    }
+
+    const nbEnfants = enfants ? parseInt(enfants) : 0;
+    // Correction: passer nbEnfants comme deuxième paramètre, pas comme troisième
+    const result = await this.barreIrsaService.calculerImpotDepuisBrut(
+      brutTotal,
+      nbEnfants, // ← deuxième paramètre
+    );
+
+    return {
+      message: "Calcul de l'impôt effectué avec succès",
+      data: result,
+    };
+  }
+
+  @Get('calcul/depuis-brut/dynamique')
+  @Public()
+  @ApiOperation({
+    summary:
+      "Calculer l'impôt à partir du salaire brut avec abattement dynamique (basé sur les cotisations CNaPS+OSTIE) et décote pour enfants",
+  })
+  @ApiQuery({ name: 'brut', type: Number, description: 'Salaire brut total' })
+  @ApiQuery({
+    name: 'employeUuid',
+    type: String,
+    description: "UUID de l'employé (pour récupérer le nombre d'enfants)",
+  })
+  @ApiQuery({
+    name: 'plafond',
+    required: false,
+    type: Number,
+    description: "Plafond SME pour l'abattement (défaut: 2 400 000 Ar)",
+  })
+  @ApiQuery({
+    name: 'date',
+    required: false,
+    description: "Date du calcul (défaut: aujourd'hui)",
+  })
+  @ApiOkResponse({ description: 'Calcul effectué avec succès' })
+  @ApiBadRequestResponse({ description: 'Paramètre invalide' })
+  async calculerImpotDepuisBrutDynamique(
+    @Query('brut') brut: string,
+    @Query('employeUuid') employeUuid: string,
+    @Query('plafond') plafond?: string,
+    @Query('date') date?: string,
+  ) {
+    const brutTotal = parseFloat(brut);
+    if (isNaN(brutTotal)) {
+      return {
+        message: 'Erreur: le paramètre "brut" doit être un nombre valide',
+        error: true,
+      };
+    }
+
+    if (!employeUuid) {
+      return {
+        message: 'Erreur: le paramètre "employeUuid" est requis',
+        error: true,
+      };
+    }
+
+    const plafondSME = plafond ? parseFloat(plafond) : 2_400_000;
+    const dateCalcul = date ? new Date(date) : new Date();
+
+    const result = await this.barreIrsaService.calculerImpotDepuisBrutDynamique(
+      brutTotal,
+      employeUuid,
+      plafondSME,
+      dateCalcul,
+    );
+
+    return {
+      message: "Calcul de l'impôt effectué avec succès",
+      data: result,
+    };
+  }
+
+  @Get('calcul/depuis-brut/dynamique-simple')
+  @Public()
+  @ApiOperation({
+    summary:
+      "Calculer l'impôt à partir du salaire brut (version simple avec nombre d'enfants manuel)",
+  })
+  @ApiQuery({ name: 'brut', type: Number, description: 'Salaire brut total' })
+  @ApiQuery({
+    name: 'enfants',
+    required: false,
+    type: Number,
+    description: "Nombre d'enfants à charge (défaut: 0)",
+  })
+  @ApiQuery({
+    name: 'plafond',
+    required: false,
+    type: Number,
+    description: "Plafond SME pour l'abattement (défaut: 2 400 000 Ar)",
+  })
+  @ApiQuery({
+    name: 'date',
+    required: false,
+    description: "Date du calcul (défaut: aujourd'hui)",
+  })
+  @ApiOkResponse({ description: 'Calcul effectué avec succès' })
+  @ApiBadRequestResponse({ description: 'Paramètre invalide' })
+  async calculerImpotDepuisBrutDynamiqueSimple(
+    @Query('brut') brut: string,
+    @Query('enfants') enfants?: string,
+    @Query('plafond') plafond?: string,
+    @Query('date') date?: string,
+  ) {
+    const brutTotal = parseFloat(brut);
+    if (isNaN(brutTotal)) {
+      return {
+        message: 'Erreur: le paramètre "brut" doit être un nombre valide',
+        error: true,
+      };
+    }
+
+    const nbEnfants = enfants ? parseInt(enfants) : 0;
+    const plafondSME = plafond ? parseFloat(plafond) : 2_400_000;
+    const dateCalcul = date ? new Date(date) : new Date();
+
+    const result =
+      await this.barreIrsaService.calculerImpotDepuisBrutDynamiqueSimple(
+        brutTotal,
+        nbEnfants,
+        plafondSME,
+        dateCalcul,
+      );
+
+    return {
+      message: "Calcul de l'impôt effectué avec succès",
+      data: result,
+    };
+  }
+
+  @Get('abattement/dynamique')
+  @Public()
+  @ApiOperation({
+    summary:
+      "Calculer l'abattement dynamique basé sur les cotisations sociales",
+  })
+  @ApiQuery({ name: 'brut', type: Number, description: 'Salaire brut total' })
+  @ApiQuery({
+    name: 'plafond',
+    required: false,
+    type: Number,
+    description: "Plafond SME pour l'abattement (défaut: 2 400 000 Ar)",
+  })
+  @ApiOkResponse({ description: 'Calcul effectué avec succès' })
+  @ApiBadRequestResponse({ description: 'Paramètre invalide' })
+  async calculerAbattementDynamique(
+    @Query('brut') brut: string,
+    @Query('plafond') plafond?: string,
+  ) {
+    const brutTotal = parseFloat(brut);
+    if (isNaN(brutTotal)) {
+      return {
+        message: 'Erreur: le paramètre "brut" doit être un nombre valide',
+        error: true,
+      };
+    }
+
+    const plafondSME = plafond ? parseFloat(plafond) : 2_400_000;
+
+    const result = await this.barreIrsaService.calculerAbattementDynamique(
+      brutTotal,
+      plafondSME,
+    );
+
+    return {
+      message: "Calcul de l'abattement dynamique effectué avec succès",
+      data: result,
+    };
+  }
+
+  @Get('cotisations-actives')
+  @Public()
+  @ApiOperation({
+    summary: 'Récupérer la liste des cotisations actives',
+  })
+  @ApiOkResponse({ description: 'Liste des cotisations actives' })
+  async getCotisationsActives() {
+    const result = await this.barreIrsaService.getCotisationsActives();
+    return {
+      message: 'Liste des cotisations actives',
+      data: result,
+    };
   }
 
   @Get(':uuid')
@@ -140,31 +361,5 @@ export class BarreIrsaController {
   @ApiNotFoundResponse({ description: 'Tranche non trouvée' })
   async remove(@Param('uuid') uuid: string) {
     await this.barreIrsaService.remove(uuid);
-  }
-  @Get('calcul/depuis-brut')
-  @Public()
-  @ApiOperation({
-    summary:
-      "Calculer l'impôt à partir du salaire brut (automatique avec abattement 2%)",
-  })
-  @ApiQuery({ name: 'brut', type: Number, description: 'Salaire brut total' })
-  @ApiOkResponse({ description: 'Calcul effectué avec succès' })
-  @ApiBadRequestResponse({ description: 'Paramètre invalide' })
-  async calculerImpotDepuisBrut(@Query('brut') brut: string) {
-    const brutTotal = parseFloat(brut);
-    if (isNaN(brutTotal)) {
-      return {
-        message: 'Erreur: le paramètre "brut" doit être un nombre valide',
-        error: true,
-      };
-    }
-
-    const result =
-      await this.barreIrsaService.calculerImpotDepuisBrut(brutTotal);
-
-    return {
-      message: "Calcul de l'impôt effectué avec succès",
-      data: result,
-    };
   }
 }
