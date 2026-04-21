@@ -5,6 +5,9 @@ import {
   Get,
   UseGuards,
   Request,
+  Param,
+  Patch,
+  Delete,
 } from '@nestjs/common';
 import {
   ApiTags,
@@ -17,6 +20,8 @@ import { LoginDto } from './dto/login.dto';
 import { RegisterDto } from './dto/register.dto';
 import { Public } from './decorators/public.decorator';
 import { JwtAuthGuard } from './guards/jwt-auth.guard';
+import { RolesGuard } from './guards/roles.guard';
+import { Roles } from './decorators/roles.decorator';
 
 @ApiTags('auth')
 @Controller('auth') // Retiré @ApiBearerAuth d'ici car certains endpoints sont publics
@@ -68,10 +73,50 @@ export class AuthController {
 
   @Post('logout')
   @UseGuards(JwtAuthGuard)
-  @ApiBearerAuth('JWT-auth') // Ajouté ici aussi
+  @ApiBearerAuth('JWT-auth')
   @ApiOperation({ summary: 'Déconnexion utilisateur' })
   @ApiResponse({ status: 200, description: 'Déconnexion réussie' })
   logout() {
     return this.authService.logout();
+  }
+
+  // ── Gestion des utilisateurs (Admin seulement) ──
+
+  @Get('users')
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles('ADMIN')
+  @ApiBearerAuth('JWT-auth')
+  @ApiOperation({ summary: 'Lister tous les utilisateurs (Admin)' })
+  async findAll() {
+    const users = await this.authService.findAll();
+    return {
+      message: 'Liste des utilisateurs récupérée',
+      data: users,
+    };
+  }
+
+  @Patch('users/:uuid')
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles('ADMIN')
+  @ApiBearerAuth('JWT-auth')
+  @ApiOperation({ summary: 'Mettre à jour un utilisateur (Admin)' })
+  async update(@Param('uuid') uuid: string, @Body() updateDto: any) {
+    const user = await this.authService.update(uuid, updateDto);
+    return {
+      message: 'Utilisateur mis à jour avec succès',
+      data: user,
+    };
+  }
+
+  @Delete('users/:uuid')
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles('ADMIN')
+  @ApiBearerAuth('JWT-auth')
+  @ApiOperation({ summary: 'Supprimer un utilisateur (Admin)' })
+  async remove(@Param('uuid') uuid: string) {
+    await this.authService.remove(uuid);
+    return {
+      message: 'Utilisateur supprimé avec succès',
+    };
   }
 }

@@ -89,13 +89,12 @@ export class BarreIrsaService {
 
   async findActive(): Promise<BarreIrsaEntity[]> {
     const now = new Date();
-    return this.barreIrsaRepository.find({
-      where: {
-        dateDebut: LessThan(now),
-        dateFin: MoreThan(now),
-      },
-      order: { ordre: 'ASC' },
-    });
+    return this.barreIrsaRepository
+      .createQueryBuilder('b')
+      .where('b.dateDebut <= :now', { now })
+      .andWhere('(b.dateFin IS NULL OR b.dateFin >= :now)', { now })
+      .orderBy('b.ordre', 'ASC')
+      .getMany();
   }
 
   async findOne(uuid: string): Promise<BarreIrsaEntity> {
@@ -146,13 +145,12 @@ export class BarreIrsaService {
   }
 
   async getActiveBarreForDate(date: Date): Promise<BarreIrsaEntity[]> {
-    return this.barreIrsaRepository.find({
-      where: {
-        dateDebut: LessThan(date),
-        dateFin: MoreThan(date),
-      },
-      order: { ordre: 'ASC' },
-    });
+    return this.barreIrsaRepository
+      .createQueryBuilder('b')
+      .where('b.dateDebut <= :date', { date })
+      .andWhere('(b.dateFin IS NULL OR b.dateFin >= :date)', { date })
+      .orderBy('b.ordre', 'ASC')
+      .getMany();
   }
 
   /**
