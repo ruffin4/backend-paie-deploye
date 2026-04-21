@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-unsafe-assignment */
 /* eslint-disable @typescript-eslint/no-unsafe-member-access */
 import {
   Injectable,
@@ -191,6 +192,54 @@ export class AuthService {
       prenom: user.prenom,
       role: user.role,
     };
+  }
+
+  async findAll(): Promise<IUserResponse[]> {
+    const users = await this.userRepository.find({
+      order: { createdAt: 'DESC' },
+    });
+    return users.map((u) => ({
+      uuid: u.uuid,
+      email: u.email,
+      nom: u.nom,
+      prenom: u.prenom,
+      role: u.role,
+    }));
+  }
+
+  async update(uuid: string, updateDto: any): Promise<IUserResponse> {
+    const user = await this.userRepository.findOne({ where: { uuid } });
+    if (!user) {
+      throw new UnauthorizedException('Utilisateur non trouvé');
+    }
+
+    if (updateDto.password) {
+      const saltRounds = this.getSaltRounds();
+      const salt = await bcrypt.genSalt(saltRounds);
+      user.passwordHash = await bcrypt.hash(updateDto.password, salt);
+    }
+
+    if (updateDto.email) user.email = updateDto.email;
+    if (updateDto.nom) user.nom = updateDto.nom;
+    if (updateDto.prenom) user.prenom = updateDto.prenom;
+    if (updateDto.role) user.role = updateDto.role;
+
+    const saved = await this.userRepository.save(user);
+    return {
+      uuid: saved.uuid,
+      email: saved.email,
+      nom: saved.nom,
+      prenom: saved.prenom,
+      role: saved.role,
+    };
+  }
+
+  async remove(uuid: string): Promise<void> {
+    const user = await this.userRepository.findOne({ where: { uuid } });
+    if (!user) {
+      throw new UnauthorizedException('Utilisateur non trouvé');
+    }
+    await this.userRepository.remove(user);
   }
 
   logout() {

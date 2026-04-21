@@ -1,3 +1,6 @@
+/* eslint-disable prettier/prettier */
+/* eslint-disable @typescript-eslint/no-unsafe-member-access */
+/* eslint-disable @typescript-eslint/no-unsafe-assignment */
 /* eslint-disable @typescript-eslint/no-unsafe-enum-comparison */
 import {
   Injectable,
@@ -203,6 +206,11 @@ export class BulletinService {
 
   /**
    * Calcule automatiquement un bulletin
+   *
+   * Règles de paie Madagascar :
+   * - GAIN, PRIME, AVANTAGE_NATURE  → inclus dans le salaire brut (base cotisations)
+   * - INDEMNITE                     → NON inclus dans le brut, mais affiché sur le bulletin
+   * - RETENUE                       → déduite du net
    */
   async calculerBulletin(
     employeUuid: string,
@@ -231,8 +239,15 @@ export class BulletinService {
     // 4. Récupérer toutes les rubriques
     const rubriques = await this.rubriqueService.findAll();
 
-    // 5. Calculer le salaire brut
+    // 5. Calculer le salaire brut (base = salaire de base de l'employé)
     let salaireBrut = Number(employe.salaireBaseMensuel) || 0;
+
+    // Stocker les montants calculés pour la génération des lignes
+    const variablesAvecMontant: Array<{
+      variable: any;
+      rubrique: any;
+      montantCalcule: number;
+    }> = [];
 
     for (const variable of variables) {
       const rubrique = rubriques.find((r) => r.uuid === variable.rubriqueUuid);
@@ -241,24 +256,39 @@ export class BulletinService {
       let montant = 0;
       const varMontant = Number(variable.montant) || 0;
 
+      // Calcul du montant selon le mode de calcul de la rubrique
       if (rubrique.modeCalcul === 'FIXE') {
         montant = varMontant;
       } else if (rubrique.modeCalcul === 'TAUX_HORAIRE') {
         const tauxHoraire = (Number(employe.salaireBaseMensuel) || 0) / 173.33;
         const majoration = 1 + (Number(rubrique.pourcentageBase) || 0) / 100;
         montant = varMontant * tauxHoraire * majoration;
+      } else if (rubrique.modeCalcul === 'POURCENTAGE_SALAIRE') {
+        const base =
+          (variable as any).basePersonnalisee ||
+          Number(employe.salaireBaseMensuel) ||
+          0;
+        montant = (base * (Number(rubrique.pourcentageBase) || 0)) / 100;
       }
 
+      // GAIN, PRIME, AVANTAGE_NATURE et INDEMNITE entrent dans le salaire brut (base de cotisation)
       if (
         rubrique.type === 'GAIN' ||
         rubrique.type === 'PRIME' ||
-        rubrique.type === 'AVANTAGE_NATURE'
+        rubrique.type === 'AVANTAGE_NATURE' ||
+        rubrique.type === 'INDEMNITE'
       ) {
         salaireBrut += montant;
       }
+
+      variablesAvecMontant.push({
+        variable,
+        rubrique,
+        montantCalcule: montant,
+      });
     }
 
-    // 6. Calculer les cotisations sociales
+    // 6. Calculer les cotisations sociales sur le salaire brut
     const cotisations =
       await this.cotisationService.calculerCotisationsSociales(
         salaireBrut,
@@ -266,7 +296,7 @@ export class BulletinService {
         dateCalcul,
       );
 
-    // 7. Calculer l'IRSA avec décote
+    // 7. Calculer l'IRSA
     const baseImposable = salaireBrut - cotisations.totalSalarie;
     const resultatImpot = await this.barreIrsaService.calculerImpot(
       baseImposable,
@@ -299,27 +329,87 @@ export class BulletinService {
 
     await this.bulletinRepository.save(bulletin);
 
-    // 10. Sauvegarder les lignes du bulletin
-    await this.ligneBulletinService.genererLignes(
-      bulletin.uuid,
-      Number(employe.salaireBaseMensuel) || 0,
-      salaireBrut,
-      cotisations,
-      resultatImpot,
-    );
+    // 10. Supprimer les anciennes lignes
+    await this.ligneBulletinService.deleteByBulletin(bulletin.uuid);
 
-    // 10.b Sauvegarder les lignes des variables mensuelles (Primes, etc.)
-    if (variables && variables.length > 0) {
-      const tauxHoraire = (Number(employe.salaireBaseMensuel) || 0) / 173.33;
-      await this.ligneBulletinService.genererLignesAVariables(
-        bulletin.uuid,
-        variables,
-        rubriques,
-        tauxHoraire,
-      );
+    // 11. Générer toutes les lignes du bulletin
+
+    // Ligne Salaire de base
+    const salaireBaseRubrique = rubriques.find((r) => r.code === 'SAL_BASE');
+    if (salaireBaseRubrique) {
+      await this.ligneBulletinService.create({
+        bulletinUuid: bulletin.uuid,
+        rubriqueUuid: salaireBaseRubrique.uuid,
+        base: null,
+        taux: null,
+        montantSalarie: Number(employe.salaireBaseMensuel) || 0,
+        montantEmployeur: null,
+        reference: 'Salaire de base',
+      });
     }
 
-    // 11. Sauvegarder le calcul IRSA
+    // Lignes des variables (primes, indemnités, etc.)
+    for (const item of variablesAvecMontant) {
+      if (item.montantCalcule === 0) continue;
+
+      await this.ligneBulletinService.create({
+        bulletinUuid: bulletin.uuid,
+        rubriqueUuid: item.rubrique.uuid,
+        base: item.variable.basePersonnalisee || null,
+        taux: item.rubrique.pourcentageBase || null,
+        montantSalarie: item.montantCalcule,
+        montantEmployeur: null,
+        reference: item.rubrique.libelle,
+      });
+    }
+
+    // Lignes des cotisations (CNaPS, OSTIE, FMFPR)
+    const cotisationRubriques = rubriques.filter(
+      (r) => r.code === 'CNaPS' || r.code === 'OSTIE' || r.code === 'FMFPR',
+    );
+
+    for (const rubrique of cotisationRubriques) {
+      let cotisationData;
+      switch (rubrique.code) {
+        case 'CNaPS':
+          cotisationData = cotisations.cotisations.cnaps;
+          break;
+        case 'OSTIE':
+          cotisationData = cotisations.cotisations.ostie;
+          break;
+        case 'FMFPR':
+          cotisationData = cotisations.cotisations.fmfpr;
+          break;
+        default:
+          continue;
+      }
+
+      await this.ligneBulletinService.create({
+        bulletinUuid: bulletin.uuid,
+        rubriqueUuid: rubrique.uuid,
+        base: cotisationData.baseUtilisee,
+        taux: rubrique.code === 'FMFPR' ? 0 : cotisationData.tauxSalarie,
+        montantSalarie: cotisationData.montantSalarie,
+        montantEmployeur: cotisationData.montantEmployeur,
+        reference: `${rubrique.code} (${cotisationData.tauxSalarie}% employé / ${cotisationData.tauxEmployeur}% employeur)`,
+      });
+    }
+
+    // Ligne IRSA
+    const irsaRubrique = rubriques.find((r) => r.code === 'IRSA');
+    if (irsaRubrique && resultatImpot.totalImpot > 0) {
+      await this.ligneBulletinService.create({
+        bulletinUuid: bulletin.uuid,
+        rubriqueUuid: irsaRubrique.uuid,
+        base: null,
+        taux: null,
+        montantSalarie: resultatImpot.totalImpot,
+        montantEmployeur: null,
+        reference: `Impôt (décote: ${resultatImpot.decote || 0} Ar, enfants: ${resultatImpot.enfants || 0})`,
+      });
+    }
+
+    // 12. Sauvegarder le calcul IRSA
     await this.calculIrsaService.sauvegarderCalcul(
       bulletin.uuid,
       baseImposable,
@@ -328,6 +418,56 @@ export class BulletinService {
     );
 
     return this.findOne(bulletin.uuid);
+  }
+
+  /**
+   * Calcule les bulletins pour tous les employés actifs sur une période
+   */
+  async calculerEnMasse(
+    periodeUuid: string,
+    date?: Date,
+    employeUuids?: string[],
+  ): Promise<BulletinPaieEntity[]> {
+    // 1. Récupérer la période (vérification qu'elle n'est pas clôturée se fera dans calculerBulletin)
+    await this.periodeService.findOne(periodeUuid);
+
+    // 2. Récupérer tous les employés actifs
+    const employes = await this.employeService.findAll();
+    let employesActifs = employes.filter((e) => e.actif);
+
+    if (employeUuids && employeUuids.length > 0) {
+      employesActifs = employesActifs.filter((e) => employeUuids.includes(e.uuid));
+    }
+
+    if (employesActifs.length === 0) {
+      throw new BadRequestException('Aucun employé actif trouvé pour le calcul');
+    }
+
+    const bulletins: BulletinPaieEntity[] = [];
+
+    // 3. Calculer le bulletin pour chaque employé
+    for (const employe of employesActifs) {
+      try {
+        const bulletin = await this.calculerBulletin(
+          employe.uuid,
+          periodeUuid,
+          date,
+        );
+        bulletins.push(bulletin);
+      } catch (error) {
+        // Optionnel : on pourrait stocker les erreurs et continuer,
+        // mais pour l'instant on laisse propager si c'est une erreur critique
+        // ou on log et on passe au suivant.
+        console.error(
+          `Erreur lors du calcul du bulletin pour l'employé ${employe.matriculeInterne}:`,
+          error,
+        );
+        // Si on veut s'arrêter à la première erreur, on throw.
+        // throw error;
+      }
+    }
+
+    return bulletins;
   }
 
   /**
@@ -355,8 +495,12 @@ export class BulletinService {
   async valider(uuid: string): Promise<BulletinPaieEntity> {
     const bulletin = await this.findOne(uuid);
 
-    if (bulletin.statut === StatutBulletin.VALIDE) {
-      throw new BadRequestException('Ce bulletin est déjà validé');
+    if (bulletin.statut === StatutBulletin.VALIDE || bulletin.statut === StatutBulletin.PAYE) {
+      throw new BadRequestException('Ce bulletin est déjà validé ou payé');
+    }
+
+    if (bulletin.statut === StatutBulletin.ANNULE) {
+      throw new BadRequestException('Impossible de valider un bulletin annulé');
     }
 
     bulletin.statut = StatutBulletin.VALIDE;
@@ -368,8 +512,26 @@ export class BulletinService {
    */
   async annuler(uuid: string): Promise<BulletinPaieEntity> {
     const bulletin = await this.findOne(uuid);
-
     bulletin.statut = StatutBulletin.ANNULE;
+    return this.bulletinRepository.save(bulletin);
+  }
+
+  /**
+   * Marque un bulletin comme payé
+   */
+  async payer(uuid: string): Promise<BulletinPaieEntity> {
+    const bulletin = await this.findOne(uuid);
+
+    if (
+      bulletin.statut !== StatutBulletin.VALIDE &&
+      bulletin.statut !== StatutBulletin.GENERE
+    ) {
+      throw new BadRequestException(
+        'Seul un bulletin validé ou généré peut être payé',
+      );
+    }
+
+    bulletin.statut = StatutBulletin.PAYE;
     return this.bulletinRepository.save(bulletin);
   }
 

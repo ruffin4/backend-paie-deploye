@@ -19,6 +19,7 @@ export enum StatutBulletin {
   CALCULE = 'CALCULE',
   VALIDE = 'VALIDE',
   GENERE = 'GENERE',
+  PAYE = 'PAYE',
   ANNULE = 'ANNULE',
 }
 

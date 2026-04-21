@@ -14,13 +14,13 @@ export class CreateLigneBulletinDto {
   @IsNumber()
   @Min(0)
   @IsOptional()
-  base?: number;
+  base?: number | null;
 
   @ApiProperty({ required: false, description: 'Taux appliqué' })
   @IsNumber()
   @Min(0)
   @IsOptional()
-  taux?: number;
+  taux?: number | null;
 
   @ApiProperty({ description: 'Montant part salarié' })
   @IsNumber()
@@ -31,7 +31,7 @@ export class CreateLigneBulletinDto {
   @IsNumber()
   @Min(0)
   @IsOptional()
-  montantEmployeur?: number;
+  montantEmployeur?: number | null;
 
   @ApiProperty({ required: false, description: 'Référence' })
   @IsString()

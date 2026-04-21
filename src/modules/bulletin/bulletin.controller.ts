@@ -24,6 +24,7 @@ import { BulletinService } from './bulletin.service';
 import { CreateBulletinDto } from './dto/create-bulletin.dto';
 import { UpdateBulletinDto } from './dto/update-bulletin.dto';
 import { CalculBulletinDto } from './dto/calcul-bulletin.dto';
+import { CalculMasseBulletinDto } from './dto/calcul-masse-bulletin.dto';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { RolesGuard } from '../auth/guards/roles.guard';
 import { Roles } from '../auth/decorators/roles.decorator';
@@ -63,6 +64,30 @@ export class BulletinController {
     return {
       message: 'Bulletin calculé avec succès',
       data: bulletin,
+    };
+  }
+
+  @Post('calculer-masse')
+  @UseGuards(RolesGuard)
+  @Roles('ADMIN', 'GESTIONNAIRE')
+  @ApiOperation({
+    summary:
+      'Calculer automatiquement les bulletins pour tous les employés sur une période',
+  })
+  @ApiCreatedResponse({ description: 'Bulletins calculés' })
+  @ApiBadRequestResponse({
+    description: 'Période clôturée ou aucun employé actif',
+  })
+  async calculerEnMasse(@Body() calculDto: CalculMasseBulletinDto) {
+    const bulletins = await this.bulletinService.calculerEnMasse(
+      calculDto.periodeUuid,
+      calculDto.date ? new Date(calculDto.date) : undefined,
+      calculDto.employeUuids,
+    );
+    return {
+      message: 'Bulletins calculés avec succès',
+      data: bulletins,
+      count: bulletins.length,
     };
   }
 
@@ -153,6 +178,19 @@ export class BulletinController {
     const bulletin = await this.bulletinService.annuler(uuid);
     return {
       message: 'Bulletin annulé avec succès',
+      data: bulletin,
+    };
+  }
+
+  @Patch(':uuid/payer')
+  @UseGuards(RolesGuard)
+  @Roles('ADMIN', 'GESTIONNAIRE')
+  @ApiOperation({ summary: 'Marquer un bulletin comme payé' })
+  @ApiOkResponse({ description: 'Bulletin payé' })
+  async payer(@Param('uuid') uuid: string) {
+    const bulletin = await this.bulletinService.payer(uuid);
+    return {
+      message: 'Bulletin marqué comme payé avec succès',
       data: bulletin,
     };
   }
