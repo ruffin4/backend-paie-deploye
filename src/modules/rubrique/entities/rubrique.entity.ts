@@ -13,12 +13,17 @@ export enum TypeRubrique {
   INDEMNITE = 'INDEMNITE',
   PRIME = 'PRIME',
   AVANTAGE_NATURE = 'AVANTAGE_NATURE',
+  INFORMATION = 'INFORMATION',
 }
 
 export enum ModeCalcul {
   FIXE = 'FIXE',
-  POURCENTAGE_SALAIRE = 'POURCENTAGE_SALAIRE',
+  SALAIRE_BASE = 'SALAIRE_BASE',
+  BRUT = 'BRUT',
+  BRUT_IMPOSABLE = 'BRUT_IMPOSABLE',
   TAUX_HORAIRE = 'TAUX_HORAIRE',
+  PERSONNALISEE = 'PERSONNALISEE',
+  POURCENTAGE_SALAIRE = 'POURCENTAGE_SALAIRE',
 }
 
 export enum SensRubrique {
@@ -68,6 +73,9 @@ export class RubriqueEntity {
 
   @Column({ default: true })
   estCotisableFMFPR!: boolean;
+
+  @Column({ default: true })
+  inclusDansBrut!: boolean;
 
   // Affichage
   @Column({ type: 'enum', enum: SensRubrique, default: SensRubrique.POSITIF })

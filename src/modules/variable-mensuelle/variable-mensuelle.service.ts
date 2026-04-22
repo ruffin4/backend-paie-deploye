@@ -41,6 +41,31 @@ export class VariableMensuelleService {
     return this.variableRepository.save(variable);
   }
 
+  async createMany(
+    dtos: CreateVariableMensuelleDto[],
+  ): Promise<VariableMensuelleEntity[]> {
+    const results: VariableMensuelleEntity[] = [];
+    for (const dto of dtos) {
+      // Pour le bulk, on écrase si ça existe déjà (upsert)
+      const existing = await this.variableRepository.findOne({
+        where: {
+          employeUuid: dto.employeUuid,
+          rubriqueUuid: dto.rubriqueUuid,
+          periodeUuid: dto.periodeUuid,
+        },
+      });
+
+      if (existing) {
+        Object.assign(existing, dto);
+        results.push(await this.variableRepository.save(existing));
+      } else {
+        const variable = this.variableRepository.create(dto);
+        results.push(await this.variableRepository.save(variable));
+      }
+    }
+    return results;
+  }
+
   async findAll(
     filter?: FilterVariableMensuelleDto,
   ): Promise<VariableMensuelleEntity[]> {

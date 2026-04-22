@@ -167,6 +167,8 @@ export class BulletinService {
           matriculeInterne: true,
           categorie: true,
           fonction: true,
+          typeContrat: true,
+          dateEmbauche: true,
         },
         periode: {
           uuid: true,
@@ -185,6 +187,7 @@ export class BulletinService {
             code: true,
             libelle: true,
             type: true,
+            inclusDansBrut: true,
           },
         },
         calculIrsa: {
@@ -241,6 +244,7 @@ export class BulletinService {
 
     // 5. Calculer le salaire brut (base = salaire de base de l'employé)
     let salaireBrut = Number(employe.salaireBaseMensuel) || 0;
+    let totalExonere = 0; // ✅ NOUVEAU : Pour les indemnités sur justificatifs (hors brut)
 
     // Stocker les montants calculés pour la génération des lignes
     const variablesAvecMontant: Array<{
@@ -271,14 +275,12 @@ export class BulletinService {
         montant = (base * (Number(rubrique.pourcentageBase) || 0)) / 100;
       }
 
-      // GAIN, PRIME, AVANTAGE_NATURE et INDEMNITE entrent dans le salaire brut (base de cotisation)
-      if (
-        rubrique.type === 'GAIN' ||
-        rubrique.type === 'PRIME' ||
-        rubrique.type === 'AVANTAGE_NATURE' ||
-        rubrique.type === 'INDEMNITE'
-      ) {
+      // ✅ MODIFICATION : Utiliser inclusDansBrut pour déterminer si la rubrique va dans le brut
+      if (rubrique.inclusDansBrut === true) {
         salaireBrut += montant;
+      } else {
+        // Indemnités exonérées (sur justificatifs) → ajoutées directement au net
+        totalExonere += montant;
       }
 
       variablesAvecMontant.push({
@@ -304,8 +306,8 @@ export class BulletinService {
       dateCalcul,
     );
 
-    // 8. Calculer le net à payer
-    const netAPayer = baseImposable - resultatImpot.totalImpot;
+    // 8. Calculer le net à payer (✅ MODIFICATION : ajouter totalExonere)
+    const netAPayer = baseImposable - resultatImpot.totalImpot + totalExonere;
 
     // 9. Créer ou mettre à jour le bulletin
     let bulletin = await this.bulletinRepository.findOne({
