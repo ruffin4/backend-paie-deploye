@@ -76,6 +76,11 @@ export class CreateRubriqueDto {
   @IsOptional()
   estCotisableFMFPR?: boolean;
 
+  @ApiProperty({ default: true, required: false })
+  @IsBoolean()
+  @IsOptional()
+  inclusDansBrut?: boolean;
+
   @ApiProperty({
     enum: SensRubrique,
     default: SensRubrique.POSITIF,

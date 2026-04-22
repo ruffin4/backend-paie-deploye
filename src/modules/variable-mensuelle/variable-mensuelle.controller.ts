@@ -51,6 +51,19 @@ export class VariableMensuelleController {
     };
   }
 
+  @Post('bulk')
+  @UseGuards(RolesGuard)
+  @Roles('ADMIN', 'GESTIONNAIRE')
+  @ApiOperation({ summary: 'Créer plusieurs variables mensuelles' })
+  @ApiCreatedResponse({ description: 'Variables créées avec succès' })
+  async createMany(@Body() dtos: CreateVariableMensuelleDto[]) {
+    const variables = await this.variableService.createMany(dtos);
+    return {
+      message: `${variables.length} variables mensuelles traitées avec succès`,
+      data: variables,
+    };
+  }
+
   @Get()
   @ApiOperation({ summary: 'Lister les variables mensuelles' })
   @ApiOkResponse({ description: 'Liste des variables' })
