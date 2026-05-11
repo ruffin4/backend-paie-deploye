@@ -7,12 +7,15 @@ import { AuthService } from './auth.service';
 import { AuthController } from './auth.controller';
 import { JwtStrategy } from './strategies/jwt.strategy';
 import { UserEntity } from './entities/user.entity';
+import { UsedTokenEntity } from './entities/used-token.entity';
 import { RolesGuard } from './guards/roles.guard';
+import { MailModule } from '../mail/mail.module';
 
 @Module({
   imports: [
     PassportModule,
-    TypeOrmModule.forFeature([UserEntity]),
+    TypeOrmModule.forFeature([UserEntity, UsedTokenEntity]),
+    MailModule,
     JwtModule.registerAsync({
       imports: [ConfigModule],
       useFactory: (configService: ConfigService) => {

@@ -1,9 +1,12 @@
+/* eslint-disable @typescript-eslint/no-unused-vars */
 /* eslint-disable @typescript-eslint/no-unsafe-assignment */
 /* eslint-disable @typescript-eslint/no-unsafe-member-access */
 import {
   Injectable,
   UnauthorizedException,
   ConflictException,
+  NotFoundException,
+  BadRequestException,
 } from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
 import { ConfigService } from '@nestjs/config';
@@ -14,19 +17,23 @@ import { IUserResponse } from './interfaces/user.interface';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { UserEntity } from './entities/user.entity';
+import { UsedTokenEntity } from './entities/used-token.entity';
+import { MailService } from '../mail/mail.service';
 
 @Injectable()
 export class AuthService {
   constructor(
     @InjectRepository(UserEntity)
     private readonly userRepository: Repository<UserEntity>,
+    @InjectRepository(UsedTokenEntity)
+    private readonly usedTokenRepository: Repository<UsedTokenEntity>,
     private readonly jwtService: JwtService,
     private readonly configService: ConfigService,
+    private readonly mailService: MailService,
   ) {
     void this.createDefaultAdmin();
   }
 
-  // Méthode utilitaire pour obtenir le salt rounds
   private getSaltRounds(): number {
     const saltRoundsRaw = this.configService.get<string>('BCRYPT_SALT_ROUNDS');
     let saltRounds = Number(saltRoundsRaw ?? 10);
@@ -53,13 +60,16 @@ export class AuthService {
           'admin123';
         const hashedPassword = await bcrypt.hash(adminPassword, salt);
 
-        const admin = this.userRepository.create({
+        const admin = this.userRepository.create();
+        Object.assign(admin, {
           email: adminEmail,
+          username: 'admin',
           passwordHash: hashedPassword,
           nom: this.configService.get<string>('DEFAULT_ADMIN_NOM') ?? 'Admin',
           prenom:
             this.configService.get<string>('DEFAULT_ADMIN_PRENOM') ?? 'System',
           role: 'ADMIN',
+          mustSetPassword: false,
         });
 
         await this.userRepository.save(admin);
@@ -67,13 +77,7 @@ export class AuthService {
           `✅ Admin par défaut créé: ${adminEmail} / ${this.configService.get<string>('DEFAULT_ADMIN_PASSWORD') ?? 'admin123'}`,
         );
       } catch (err: unknown) {
-        // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
-        const errorMessage =
-          err instanceof Error
-            ? err.message
-            : err && typeof err === 'object' && 'message' in err
-              ? (err as any).message
-              : String(err);
+        const errorMessage = err instanceof Error ? err.message : String(err);
         console.error(
           "❌ Erreur lors de la création de l'admin par défaut:",
           errorMessage,
@@ -83,60 +87,40 @@ export class AuthService {
   }
 
   async register(registerDto: RegisterDto) {
-    // Vérifier si l'utilisateur existe déjà
     const existingUser = await this.userRepository.findOne({
-      where: { email: registerDto.email },
+      where: [{ email: registerDto.email }, { username: registerDto.username }],
     });
 
     if (existingUser) {
-      throw new ConflictException('Cet email est déjà utilisé');
+      throw new ConflictException("Email ou nom d'utilisateur déjà utilisé");
     }
 
-    // Hasher le mot de passe
     const saltRounds = this.getSaltRounds();
     const salt = await bcrypt.genSalt(saltRounds);
     const hashedPassword = await bcrypt.hash(registerDto.password, salt);
 
-    // Créer l'utilisateur
-    const user = this.userRepository.create({
+    const user = this.userRepository.create();
+    Object.assign(user, {
       email: registerDto.email,
+      username: registerDto.username,
       passwordHash: hashedPassword,
       nom: registerDto.nom,
       prenom: registerDto.prenom,
       role: registerDto.role ?? 'GESTIONNAIRE',
+      mustSetPassword: false,
     });
 
     const saved = await this.userRepository.save(user);
-
-    // Générer le token JWT
-    const payload = {
-      sub: saved.uuid,
-      email: saved.email,
-      role: saved.role,
-    };
-    const access_token = this.jwtService.sign(payload);
-
-    return {
-      access_token,
-      user: {
-        uuid: saved.uuid,
-        email: saved.email,
-        nom: saved.nom,
-        prenom: saved.prenom,
-        role: saved.role,
-      },
-    };
+    return this.generateAuthResponse(saved);
   }
 
   async login(loginDto: LoginDto) {
-    // Chercher l'utilisateur
     const user = await this.userRepository.findOne({
-      where: { email: loginDto.email },
+      where: [{ email: loginDto.email }, { username: loginDto.email }],
     });
 
-    // Vérifier l'existence et le mot de passe
     if (!user || !user.passwordHash) {
-      throw new UnauthorizedException('Email ou mot de passe incorrect');
+      throw new UnauthorizedException('Identifiants incorrects');
     }
 
     const isPasswordValid = await bcrypt.compare(
@@ -145,14 +129,18 @@ export class AuthService {
     );
 
     if (!isPasswordValid) {
-      throw new UnauthorizedException('Email ou mot de passe incorrect');
+      throw new UnauthorizedException('Identifiants incorrects');
     }
 
-    // Générer le token JWT
+    return this.generateAuthResponse(user);
+  }
+
+  private generateAuthResponse(user: UserEntity) {
     const payload = {
       sub: user.uuid,
       email: user.email,
       role: user.role,
+      mustSetPassword: user.mustSetPassword,
     };
     const access_token = this.jwtService.sign(payload);
 
@@ -161,12 +149,163 @@ export class AuthService {
       user: {
         uuid: user.uuid,
         email: user.email,
+        username: user.username,
         nom: user.nom,
         prenom: user.prenom,
         role: user.role,
+        mustSetPassword: user.mustSetPassword,
       },
     };
   }
+
+  // --- Nouveaux Flows ---
+
+  async createManager(createDto: any, adminUuid: string) {
+    const existing = await this.userRepository.findOne({
+      where: [{ email: createDto.email }, { username: createDto.username }],
+    });
+    if (existing) {
+      throw new ConflictException("Email ou nom d'utilisateur déjà utilisé");
+    }
+
+    const manager = this.userRepository.create();
+    Object.assign(manager, {
+      ...createDto,
+      role: 'GESTIONNAIRE',
+      mustSetPassword: true,
+      createdBy: adminUuid,
+      passwordHash: null,
+    });
+
+    const saved = await this.userRepository.save(manager);
+
+    // Générer token SET_PASSWORD (48h)
+    const setupToken = this.jwtService.sign(
+      { sub: saved.uuid, type: 'SET_PASSWORD' },
+      {
+        secret: this.configService.get<string>('JWT_SETUP_SECRET'),
+        expiresIn: '48h',
+      },
+    );
+
+    await this.mailService.sendWelcomeManager(
+      saved.email,
+      saved.username || saved.email,
+      setupToken,
+    );
+
+    return { message: 'Gestionnaire créé et email envoyé' };
+  }
+
+  async setPassword(token: string, password: any) {
+    let payload: any;
+    try {
+      payload = this.jwtService.verify(token, {
+        secret: this.configService.get<string>('JWT_SETUP_SECRET'),
+      });
+    } catch (e: any) {
+      throw new BadRequestException('Token invalide ou expiré');
+    }
+
+    if (payload.type !== 'SET_PASSWORD') {
+      throw new BadRequestException('Type de token incorrect');
+    }
+
+    // Vérifier anti-replay
+    const used = await this.usedTokenRepository.findOne({ where: { token } });
+    if (used) {
+      throw new BadRequestException('Ce lien a déjà été utilisé');
+    }
+
+    const user = await this.userRepository.findOne({
+      where: { uuid: payload.sub },
+    });
+    if (!user) throw new NotFoundException('Utilisateur non trouvé');
+
+    const saltRounds = this.getSaltRounds();
+    const salt = await bcrypt.genSalt(saltRounds);
+    user.passwordHash = await bcrypt.hash(String(password), salt);
+    user.mustSetPassword = false;
+
+    await this.userRepository.save(user);
+
+    // Blacklist token
+    await this.usedTokenRepository.save({
+      token,
+      userId: user.uuid,
+    });
+
+    return { message: 'Mot de passe configuré avec succès' };
+  }
+
+  async forgotPassword(emailOrUsername: string) {
+    const user = await this.userRepository.findOne({
+      where: [{ email: emailOrUsername }, { username: emailOrUsername }],
+    });
+
+    // On ne jette pas d'erreur pour ne pas révéler l'existence du compte
+    if (user) {
+      const resetToken = this.jwtService.sign(
+        { sub: user.uuid, type: 'RESET_PASSWORD' },
+        {
+          secret: this.configService.get<string>('JWT_RESET_SECRET'),
+          expiresIn: '15min',
+        },
+      );
+
+      await this.mailService.sendPasswordReset(
+        user.email,
+        user.username || user.email,
+        resetToken,
+      );
+    }
+
+    return {
+      message:
+        'Si un compte correspond à cet identifiant, un email a été envoyé.',
+    };
+  }
+
+  async resetPassword(token: string, newPassword: any) {
+    let payload: any;
+    try {
+      payload = this.jwtService.verify(token, {
+        secret: this.configService.get<string>('JWT_RESET_SECRET'),
+      });
+    } catch (e) {
+      throw new BadRequestException('Token invalide ou expiré');
+    }
+
+    if (payload.type !== 'RESET_PASSWORD') {
+      throw new BadRequestException('Type de token incorrect');
+    }
+
+    const used = await this.usedTokenRepository.findOne({ where: { token } });
+    if (used) {
+      throw new BadRequestException('Ce lien a déjà été utilisé');
+    }
+
+    // eslint-disable-next-line prettier/prettier
+    const user = await this.userRepository.findOne({ where: { uuid: payload.sub } });
+    if (!user) throw new NotFoundException('Utilisateur non trouvé');
+
+    const saltRounds = this.getSaltRounds();
+    const salt = await bcrypt.genSalt(saltRounds);
+    user.passwordHash = await bcrypt.hash(String(newPassword), salt);
+
+    await this.userRepository.save(user);
+
+    // Blacklist token
+    await this.usedTokenRepository.save({
+      token,
+      userId: user.uuid,
+    });
+
+    return { message: 'Mot de passe réinitialisé avec succès' };
+  }
+
+  // --- Utility Methods ---
+
   async validateUserById(id: string): Promise<IUserResponse | null> {
     const user = await this.userRepository.findOne({ where: { uuid: id } });
     if (!user) return null;
@@ -177,8 +316,10 @@ export class AuthService {
       nom: user.nom,
       prenom: user.prenom,
       role: user.role,
+      mustSetPassword: user.mustSetPassword,
     };
   }
+
   async getProfile(userId: string): Promise<IUserResponse> {
     const user = await this.userRepository.findOne({ where: { uuid: userId } });
     if (!user) {
@@ -191,6 +332,7 @@ export class AuthService {
       nom: user.nom,
       prenom: user.prenom,
       role: user.role,
+      mustSetPassword: user.mustSetPassword,
     };
   }
 
@@ -204,6 +346,7 @@ export class AuthService {
       nom: u.nom,
       prenom: u.prenom,
       role: u.role,
+      mustSetPassword: u.mustSetPassword,
     }));
   }
 
@@ -216,10 +359,11 @@ export class AuthService {
     if (updateDto.password) {
       const saltRounds = this.getSaltRounds();
       const salt = await bcrypt.genSalt(saltRounds);
-      user.passwordHash = await bcrypt.hash(updateDto.password, salt);
+      user.passwordHash = await bcrypt.hash(String(updateDto.password), salt);
     }
 
     if (updateDto.email) user.email = updateDto.email;
+    if (updateDto.username) user.username = updateDto.username;
     if (updateDto.nom) user.nom = updateDto.nom;
     if (updateDto.prenom) user.prenom = updateDto.prenom;
     if (updateDto.role) user.role = updateDto.role;
@@ -231,6 +375,7 @@ export class AuthService {
       nom: saved.nom,
       prenom: saved.prenom,
       role: saved.role,
+      mustSetPassword: saved.mustSetPassword,
     };
   }
 

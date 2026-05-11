@@ -14,8 +14,11 @@ export class UserEntity {
   @Column({ unique: true })
   email!: string;
 
-  @Column({ name: 'password_hash' })
-  passwordHash!: string;
+  @Column({ unique: true, nullable: true })
+  username?: string;
+
+  @Column({ name: 'password_hash', nullable: true })
+  passwordHash?: string;
 
   @Column({ nullable: true })
   nom?: string;
@@ -29,6 +32,12 @@ export class UserEntity {
     default: 'GESTIONNAIRE',
   })
   role!: 'ADMIN' | 'GESTIONNAIRE';
+
+  @Column({ name: 'must_set_password', default: false })
+  mustSetPassword!: boolean;
+
+  @Column({ name: 'created_by', nullable: true })
+  createdBy?: string;
 
   @CreateDateColumn({ name: 'created_at' })
   createdAt!: Date;

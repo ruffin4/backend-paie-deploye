@@ -16,6 +16,11 @@ export class RegisterDto {
   @IsEmail({}, { message: 'Email invalide' })
   email!: string;
 
+  @ApiProperty({ example: 'jrakoto', description: "Nom d'utilisateur" })
+  @IsString()
+  @MinLength(3)
+  username!: string;
+
   @ApiProperty({ example: 'password123', description: 'Mot de passe' })
   @IsString()
   @MinLength(6, {

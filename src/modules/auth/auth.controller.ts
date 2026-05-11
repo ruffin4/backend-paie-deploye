@@ -1,3 +1,6 @@
+/* eslint-disable @typescript-eslint/no-unsafe-argument */
+/* eslint-disable @typescript-eslint/no-unsafe-member-access */
+/* eslint-disable @typescript-eslint/no-unsafe-assignment */
 import {
   Controller,
   Post,
@@ -8,6 +11,7 @@ import {
   Param,
   Patch,
   Delete,
+  BadRequestException,
 } from '@nestjs/common';
 import {
   ApiTags,
@@ -22,9 +26,11 @@ import { Public } from './decorators/public.decorator';
 import { JwtAuthGuard } from './guards/jwt-auth.guard';
 import { RolesGuard } from './guards/roles.guard';
 import { Roles } from './decorators/roles.decorator';
+import { MustSetPasswordGuard } from './guards/must-set-password.guard';
+import { Throttle, ThrottlerGuard } from '@nestjs/throttler';
 
 @ApiTags('auth')
-@Controller('auth') // Retiré @ApiBearerAuth d'ici car certains endpoints sont publics
+@Controller('auth')
 export class AuthController {
   constructor(private readonly authService: AuthService) {}
 
@@ -32,7 +38,6 @@ export class AuthController {
   @Post('register')
   @ApiOperation({ summary: "Inscription d'un nouvel utilisateur" })
   @ApiResponse({ status: 201, description: 'Utilisateur créé avec succès' })
-  @ApiResponse({ status: 409, description: 'Email déjà utilisé' })
   async register(@Body() registerDto: RegisterDto) {
     const result = await this.authService.register(registerDto);
     return {
@@ -45,7 +50,6 @@ export class AuthController {
   @Post('login')
   @ApiOperation({ summary: 'Connexion utilisateur' })
   @ApiResponse({ status: 200, description: 'Connexion réussie' })
-  @ApiResponse({ status: 401, description: 'Email ou mot de passe incorrect' })
   async login(@Body() loginDto: LoginDto) {
     const result = await this.authService.login(loginDto);
     return {
@@ -55,15 +59,11 @@ export class AuthController {
   }
 
   @Get('profile')
-  @UseGuards(JwtAuthGuard)
-  @ApiBearerAuth('JWT-auth') // Ajouté ici pour indiquer que cet endpoint nécessite un token
+  @UseGuards(JwtAuthGuard, MustSetPasswordGuard)
+  @ApiBearerAuth('JWT-auth')
   @ApiOperation({ summary: 'Récupérer le profil utilisateur' })
-  @ApiResponse({ status: 200, description: 'Profil récupéré avec succès' })
-  @ApiResponse({ status: 401, description: 'Utilisateur non authentifié' })
-  async getProfile(@Request() req) {
-    // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment, @typescript-eslint/no-unsafe-member-access
-    const userId = req.user.uuid; // req.user est déjà peuplé par JwtAuthGuard
-    // eslint-disable-next-line @typescript-eslint/no-unsafe-argument
+  async getProfile(@Request() req: any) {
+    const userId = req.user.uuid;
     const user = await this.authService.getProfile(userId);
     return {
       message: 'Profil récupéré avec succès',
@@ -71,16 +71,54 @@ export class AuthController {
     };
   }
 
+  // --- Nouveaux endpoints avancés ---
+
+  @Post('admin/create-manager')
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles('ADMIN')
+  @ApiBearerAuth('JWT-auth')
+  @ApiOperation({ summary: "Création d'un gestionnaire par l'admin" })
+  async createManager(@Body() createDto: any, @Request() req) {
+    return this.authService.createManager(createDto, req.user.uuid);
+  }
+
+  @Public()
+  @Post('set-password')
+  @ApiOperation({ summary: 'Configuration initiale du mot de passe' })
+  async setPassword(@Body() body: any) {
+    if (!body?.token) {
+      throw new BadRequestException('Token is required');
+    }
+    const token = body.token;
+    const password = body.password;
+    return this.authService.setPassword(token, password);
+  }
+
+  @Public()
+  @UseGuards(ThrottlerGuard)
+  @Throttle({ default: { limit: 3, ttl: 3600000 } })
+  @Post('forgot-password')
+  @ApiOperation({ summary: 'Demande de réinitialisation de mot de passe' })
+  async forgotPassword(@Body() body: { email: string }) {
+    return this.authService.forgotPassword(body.email);
+  }
+
+  @Public()
+  @Post('reset-password')
+  @ApiOperation({ summary: 'Réinitialisation du mot de passe avec token' })
+  async resetPassword(@Body() body: { token: string; password: any }) {
+    return this.authService.resetPassword(body.token, body.password);
+  }
+
   @Post('logout')
   @UseGuards(JwtAuthGuard)
   @ApiBearerAuth('JWT-auth')
   @ApiOperation({ summary: 'Déconnexion utilisateur' })
-  @ApiResponse({ status: 200, description: 'Déconnexion réussie' })
   logout() {
     return this.authService.logout();
   }
 
-  // ── Gestion des utilisateurs (Admin seulement) ──
+  // --- Gestion des utilisateurs (Admin seulement) ---
 
   @Get('users')
   @UseGuards(JwtAuthGuard, RolesGuard)
