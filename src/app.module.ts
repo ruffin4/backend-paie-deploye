@@ -17,6 +17,7 @@ import { BulletinModule } from './modules/bulletin/bulletin.module';
 import { LigneBulletinModule } from './modules/ligne-bulletin/ligne-bulletin.module';
 import { CalculIrsaModule } from './modules/calcul-irsa/calcul-irsa.module';
 import { LigneCalculIrsaModule } from './modules/ligne-calcul-irsa/ligne-calcul-irsa.module';
+import { RapportModule } from './modules/rapport/rapport.module';
 import { JwtAuthGuard } from './modules/auth/guards/jwt-auth.guard';
 
 @Module({
@@ -47,6 +48,7 @@ import { JwtAuthGuard } from './modules/auth/guards/jwt-auth.guard';
     LigneBulletinModule,
     CalculIrsaModule,
     LigneCalculIrsaModule,
+    RapportModule,
   ],
   providers: [
     {

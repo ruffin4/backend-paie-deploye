@@ -50,6 +50,8 @@ export class EmployeService {
       categorie: createDto.categorie,
       salaireBaseMensuel: createDto.salaireBaseMensuel,
       nbEnfants: createDto.nbEnfants ?? 0,
+      adresse: createDto.adresse,
+      telephone: createDto.telephone,
       actif: createDto.actif ?? true,
     };
     const matriculeExists = await this.employeRepository.findOne({
@@ -131,6 +133,12 @@ export class EmployeService {
     }
     if (updateDto.actif !== undefined) {
       employe.actif = updateDto.actif;
+    }
+    if (updateDto.adresse !== undefined) {
+      employe.adresse = updateDto.adresse;
+    }
+    if (updateDto.telephone !== undefined) {
+      employe.telephone = updateDto.telephone;
     }
 
     return this.employeRepository.save(employe);

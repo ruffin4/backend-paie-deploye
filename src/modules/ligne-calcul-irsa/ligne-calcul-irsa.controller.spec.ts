@@ -9,7 +9,9 @@ describe('LigneCalculIrsaController', () => {
       controllers: [LigneCalculIrsaController],
     }).compile();
 
-    controller = module.get<LigneCalculIrsaController>(LigneCalculIrsaController);
+    controller = module.get<LigneCalculIrsaController>(
+      LigneCalculIrsaController,
+    );
   });
 
   it('should be defined', () => {

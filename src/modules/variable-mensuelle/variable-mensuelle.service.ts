@@ -4,6 +4,7 @@ import {
   Injectable,
   NotFoundException,
   ConflictException,
+  ForbiddenException,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
@@ -11,17 +12,22 @@ import { VariableMensuelleEntity } from './entities/variable-mensuelle.entity';
 import { CreateVariableMensuelleDto } from './dto/create-variable-mensuelle.dto';
 import { UpdateVariableMensuelleDto } from './dto/update-variable-mensuelle.dto';
 import { FilterVariableMensuelleDto } from './dto/filter-variable-mensuelle.dto';
+import { PeriodeService } from '../periode/periode.service';
 
 @Injectable()
 export class VariableMensuelleService {
   constructor(
     @InjectRepository(VariableMensuelleEntity)
     private readonly variableRepository: Repository<VariableMensuelleEntity>,
+    private readonly periodeService: PeriodeService,
   ) {}
 
   async create(
     createDto: CreateVariableMensuelleDto,
   ): Promise<VariableMensuelleEntity> {
+    if (await this.periodeService.isClosed(createDto.periodeUuid)) {
+      throw new ForbiddenException('La période est clôturée');
+    }
     // Vérifier si une variable existe déjà pour cette combinaison
     const existing = await this.variableRepository.findOne({
       where: {
@@ -44,6 +50,10 @@ export class VariableMensuelleService {
   async createMany(
     dtos: CreateVariableMensuelleDto[],
   ): Promise<VariableMensuelleEntity[]> {
+    // eslint-disable-next-line prettier/prettier
+    if (dtos.length > 0 && await this.periodeService.isClosed(dtos[0].periodeUuid)) {
+      throw new ForbiddenException('La période est clôturée');
+    }
     const results: VariableMensuelleEntity[] = [];
     for (const dto of dtos) {
       // Pour le bulk, on écrase si ça existe déjà (upsert)
@@ -115,11 +125,18 @@ export class VariableMensuelleService {
     updateDto: UpdateVariableMensuelleDto,
   ): Promise<VariableMensuelleEntity> {
     const variable = await this.findOne(uuid);
+    if (await this.periodeService.isClosed(variable.periodeUuid)) {
+      throw new ForbiddenException('La période est clôturée');
+    }
     Object.assign(variable, updateDto);
     return this.variableRepository.save(variable);
   }
 
   async remove(uuid: string): Promise<void> {
+    const variable = await this.findOne(uuid);
+    if (await this.periodeService.isClosed(variable.periodeUuid)) {
+      throw new ForbiddenException('La période est clôturée');
+    }
     const result = await this.variableRepository.delete({ uuid });
     if (result.affected === 0) {
       throw new NotFoundException(`Variable avec l'UUID "${uuid}" non trouvée`);
@@ -127,6 +144,9 @@ export class VariableMensuelleService {
   }
 
   async removeByPeriode(periodeUuid: string): Promise<void> {
+    if (await this.periodeService.isClosed(periodeUuid)) {
+      throw new ForbiddenException('La période est clôturée');
+    }
     await this.variableRepository.delete({ periodeUuid });
   }
 
@@ -134,6 +154,9 @@ export class VariableMensuelleService {
     employeUuid: string,
     periodeUuid: string,
   ): Promise<void> {
+    if (await this.periodeService.isClosed(periodeUuid)) {
+      throw new ForbiddenException('La période est clôturée');
+    }
     await this.variableRepository.delete({ employeUuid, periodeUuid });
   }
 }

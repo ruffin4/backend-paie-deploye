@@ -60,6 +60,10 @@ export class BulletinService {
       );
     }
 
+    if (await this.periodeService.isClosed(createDto.periodeUuid)) {
+      throw new BadRequestException('La période est clôturée');
+    }
+
     const bulletin = this.bulletinRepository.create(createDto);
     return this.bulletinRepository.save(bulletin);
   }
@@ -481,6 +485,10 @@ export class BulletinService {
   ): Promise<BulletinPaieEntity> {
     const bulletin = await this.findOne(uuid);
 
+    if (await this.periodeService.isClosed(bulletin.periodeUuid)) {
+      throw new BadRequestException('La période est clôturée');
+    }
+
     if (bulletin.statut === StatutBulletin.VALIDE) {
       throw new BadRequestException(
         'Impossible de modifier un bulletin validé',
@@ -496,6 +504,10 @@ export class BulletinService {
    */
   async valider(uuid: string): Promise<BulletinPaieEntity> {
     const bulletin = await this.findOne(uuid);
+
+    if (await this.periodeService.isClosed(bulletin.periodeUuid)) {
+      throw new BadRequestException('La période est clôturée');
+    }
 
     if (bulletin.statut === StatutBulletin.VALIDE || bulletin.statut === StatutBulletin.PAYE) {
       throw new BadRequestException('Ce bulletin est déjà validé ou payé');
@@ -514,6 +526,9 @@ export class BulletinService {
    */
   async annuler(uuid: string): Promise<BulletinPaieEntity> {
     const bulletin = await this.findOne(uuid);
+    if (await this.periodeService.isClosed(bulletin.periodeUuid)) {
+      throw new BadRequestException('La période est clôturée');
+    }
     bulletin.statut = StatutBulletin.ANNULE;
     return this.bulletinRepository.save(bulletin);
   }
@@ -523,6 +538,10 @@ export class BulletinService {
    */
   async payer(uuid: string): Promise<BulletinPaieEntity> {
     const bulletin = await this.findOne(uuid);
+
+    if (await this.periodeService.isClosed(bulletin.periodeUuid)) {
+      throw new BadRequestException('La période est clôturée');
+    }
 
     if (
       bulletin.statut !== StatutBulletin.VALIDE &&
@@ -542,6 +561,10 @@ export class BulletinService {
    */
   async remove(uuid: string): Promise<void> {
     const bulletin = await this.findOne(uuid);
+
+    if (await this.periodeService.isClosed(bulletin.periodeUuid)) {
+      throw new BadRequestException('La période est clôturée');
+    }
 
     if (bulletin.statut === StatutBulletin.VALIDE) {
       throw new BadRequestException(

@@ -4,6 +4,6 @@ import { HistoriquePaieController } from './historique-paie.controller';
 
 @Module({
   providers: [HistoriquePaieService],
-  controllers: [HistoriquePaieController]
+  controllers: [HistoriquePaieController],
 })
 export class HistoriquePaieModule {}

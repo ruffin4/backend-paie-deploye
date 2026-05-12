@@ -57,6 +57,13 @@ export class EmployeEntity {
   @Column({ default: 0 })
   nbEnfants!: number;
 
+  // Contact
+  @Column({ length: 255, nullable: true })
+  adresse?: string;
+
+  @Column({ length: 20, nullable: true })
+  telephone?: string;
+
   // Statut
   @Column({ default: true })
   actif!: boolean;

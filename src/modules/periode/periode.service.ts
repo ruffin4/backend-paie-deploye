@@ -19,6 +19,11 @@ export class PeriodeService {
     private readonly periodeRepository: Repository<PeriodeEntity>,
   ) {}
 
+  async isClosed(uuid: string): Promise<boolean> {
+    const periode = await this.periodeRepository.findOne({ where: { uuid } });
+    return periode?.cloturee || false;
+  }
+
   async create(createDto: CreatePeriodeDto): Promise<PeriodeEntity> {
     // Vérifier si la période existe déjà
     const existingPeriode = await this.periodeRepository.findOne({

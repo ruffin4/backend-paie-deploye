@@ -41,7 +41,7 @@ export class LigneBulletinEntity {
   createdAt!: Date;
 
   // Relations
-  // eslint-disable-next-line @typescript-eslint/no-unsafe-return
+
   @ManyToOne(() => BulletinPaieEntity, (bulletin) => bulletin.lignes)
   @JoinColumn({ name: 'bulletinUuid' })
   bulletin!: BulletinPaieEntity;

@@ -62,7 +62,18 @@ export class CreateEmployeDto {
   @IsOptional()
   @Type(() => Number)
   @IsNumber()
+  @Min(0)
   nbEnfants?: number;
+
+  @ApiProperty({ example: 'Lot II M 45 bis Antananarivo', required: false })
+  @IsOptional()
+  @IsString()
+  adresse?: string;
+
+  @ApiProperty({ example: '034 00 000 00', required: false })
+  @IsOptional()
+  @IsString()
+  telephone?: string;
 
   @ApiProperty({ example: true, required: false })
   @IsOptional()

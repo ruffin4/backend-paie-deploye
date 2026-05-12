@@ -9,7 +9,9 @@ describe('VariableMensuelleController', () => {
       controllers: [VariableMensuelleController],
     }).compile();
 
-    controller = module.get<VariableMensuelleController>(VariableMensuelleController);
+    controller = module.get<VariableMensuelleController>(
+      VariableMensuelleController,
+    );
   });
 
   it('should be defined', () => {
