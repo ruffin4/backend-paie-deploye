@@ -7,6 +7,7 @@ import {
   ConflictException,
   NotFoundException,
   BadRequestException,
+  Logger,
 } from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
 import { ConfigService } from '@nestjs/config';
@@ -22,6 +23,8 @@ import { MailService } from '../mail/mail.service';
 
 @Injectable()
 export class AuthService {
+  private readonly logger = new Logger(AuthService.name);
+
   constructor(
     @InjectRepository(UserEntity)
     private readonly userRepository: Repository<UserEntity>,
@@ -188,13 +191,59 @@ export class AuthService {
       },
     );
 
-    await this.mailService.sendWelcomeManager(
-      saved.email,
-      saved.username || saved.email,
-      setupToken,
-    );
+    try {
+      await this.mailService.sendWelcomeManager(
+        saved.email,
+        saved.username || saved.email,
+        setupToken,
+      );
+      saved.invitationSent = true;
+      await this.userRepository.save(saved);
+    } catch (err) {
+      console.error('Failed to send welcome email:', err);
+      return {
+        message:
+          "Gestionnaire créé, mais l'envoi de l'email a échoué (problème de connexion). Vous pouvez le renvoyer manuellement depuis la liste.",
+        emailError: true,
+      };
+    }
 
     return { message: 'Gestionnaire créé et email envoyé' };
+  }
+
+  async resendInvitation(uuid: string) {
+    const user = await this.userRepository.findOne({ where: { uuid } });
+    if (!user) throw new NotFoundException('Utilisateur non trouvé');
+
+    if (!user.mustSetPassword) {
+      throw new BadRequestException('Cet utilisateur a déjà activé son compte');
+    }
+
+    // Générer un nouveau token SET_PASSWORD (48h)
+    const setupToken = this.jwtService.sign(
+      { sub: user.uuid, type: 'SET_PASSWORD' },
+      {
+        secret: this.configService.get<string>('JWT_SETUP_SECRET'),
+        expiresIn: '48h',
+      },
+    );
+
+    try {
+      await this.mailService.sendWelcomeManager(
+        user.email,
+        user.username || user.email,
+        setupToken,
+      );
+      user.invitationSent = true;
+      await this.userRepository.save(user);
+    } catch (err) {
+      this.logger.error(`Failed to resend invitation: ${err.message}`);
+      throw new BadRequestException(
+        "L'envoi de l'email a échoué. Veuillez vérifier votre connexion internet et réessayer.",
+      );
+    }
+
+    return { message: 'Email de bienvenue renvoyé avec succès' };
   }
 
   async setPassword(token: string, password: any) {
@@ -317,6 +366,7 @@ export class AuthService {
       prenom: user.prenom,
       role: user.role,
       mustSetPassword: user.mustSetPassword,
+      invitationSent: user.invitationSent,
     };
   }
 
@@ -333,6 +383,7 @@ export class AuthService {
       prenom: user.prenom,
       role: user.role,
       mustSetPassword: user.mustSetPassword,
+      invitationSent: user.invitationSent,
     };
   }
 
@@ -347,6 +398,7 @@ export class AuthService {
       prenom: u.prenom,
       role: u.role,
       mustSetPassword: u.mustSetPassword,
+      invitationSent: u.invitationSent,
     }));
   }
 
@@ -376,6 +428,7 @@ export class AuthService {
       prenom: saved.prenom,
       role: saved.role,
       mustSetPassword: saved.mustSetPassword,
+      invitationSent: saved.invitationSent,
     };
   }
 

@@ -82,6 +82,15 @@ export class AuthController {
     return this.authService.createManager(createDto, req.user.uuid);
   }
 
+  @Post('admin/resend-invitation/:uuid')
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles('ADMIN')
+  @ApiBearerAuth('JWT-auth')
+  @ApiOperation({ summary: "Renvoyer l'email d'invitation à un gestionnaire" })
+  async resendInvitation(@Param('uuid') uuid: string) {
+    return this.authService.resendInvitation(uuid);
+  }
+
   @Public()
   @Post('set-password')
   @ApiOperation({ summary: 'Configuration initiale du mot de passe' })

@@ -16,6 +16,7 @@ import { EmployeService } from '../employe/employe.service';
 import { PeriodeService } from '../periode/periode.service';
 import { VariableMensuelleService } from '../variable-mensuelle/variable-mensuelle.service';
 import { RubriqueService } from '../rubrique/rubrique.service';
+import { TypeRubrique } from '../rubrique/entities/rubrique.entity';
 import { CotisationService } from '../cotisation/cotisation.service';
 import { BarreIrsaService } from '../barre-irsa/barre-irsa.service';
 import { LigneBulletinService } from '../ligne-bulletin/ligne-bulletin.service';
@@ -191,6 +192,7 @@ export class BulletinService {
             code: true,
             libelle: true,
             type: true,
+            modeCalcul: true,
             inclusDansBrut: true,
           },
         },
@@ -248,7 +250,14 @@ export class BulletinService {
 
     // 5. Calculer le salaire brut (base = salaire de base de l'employé)
     let salaireBrut = Number(employe.salaireBaseMensuel) || 0;
-    let totalExonere = 0; // ✅ NOUVEAU : Pour les indemnités sur justificatifs (hors brut)
+    let totalExonere = 0; // Pour les indemnités sur justificatifs (hors brut)
+
+    // ✅ NOUVEAU : Bases spécifiques pour cotisations et impôts
+    let baseCNaPS = Number(employe.salaireBaseMensuel) || 0;
+    let baseOSTIE = Number(employe.salaireBaseMensuel) || 0;
+    let baseFMFPR = Number(employe.salaireBaseMensuel) || 0;
+    let baseImposableIRSA_Gains = Number(employe.salaireBaseMensuel) || 0;
+    let totalAvantagesNature = 0; // Pour déduction du net
 
     // Stocker les montants calculés pour la génération des lignes
     const variablesAvecMontant: Array<{
@@ -279,12 +288,21 @@ export class BulletinService {
         montant = (base * (Number(rubrique.pourcentageBase) || 0)) / 100;
       }
 
-      // ✅ MODIFICATION : Utiliser inclusDansBrut pour déterminer si la rubrique va dans le brut
+      // ✅ MODIFICATION : Gestion des bases spécifiques
       if (rubrique.inclusDansBrut === true) {
         salaireBrut += montant;
       } else {
         // Indemnités exonérées (sur justificatifs) → ajoutées directement au net
         totalExonere += montant;
+      }
+
+      if (rubrique.estCotisableCNaPS) baseCNaPS += montant;
+      if (rubrique.estCotisableOSTIE) baseOSTIE += montant;
+      if (rubrique.estCotisableFMFPR) baseFMFPR += montant;
+      if (rubrique.estImposableIRSA) baseImposableIRSA_Gains += montant;
+
+      if (rubrique.type === TypeRubrique.AVANTAGE_NATURE) {
+        totalAvantagesNature += montant;
       }
 
       variablesAvecMontant.push({
@@ -294,24 +312,36 @@ export class BulletinService {
       });
     }
 
-    // 6. Calculer les cotisations sociales sur le salaire brut
+
+    // 6. Calculer les cotisations sociales sur les bases spécifiques
     const cotisations =
       await this.cotisationService.calculerCotisationsSociales(
         salaireBrut,
-        undefined,
+        baseImposableIRSA_Gains,
         dateCalcul,
+        {
+          cnaps: baseCNaPS,
+          ostie: baseOSTIE,
+          fmfpr: baseFMFPR,
+        },
       );
 
     // 7. Calculer l'IRSA
-    const baseImposable = salaireBrut - cotisations.totalSalarie;
+    const baseImposableIRSA = baseImposableIRSA_Gains - cotisations.totalSalarie;
     const resultatImpot = await this.barreIrsaService.calculerImpot(
-      baseImposable,
+      baseImposableIRSA,
       employe.nbEnfants,
       dateCalcul,
     );
 
-    // 8. Calculer le net à payer (✅ MODIFICATION : ajouter totalExonere)
-    const netAPayer = baseImposable - resultatImpot.totalImpot + totalExonere;
+    // 8. Calculer le net à payer
+    // Net = (Salaire Brut - Cotisations - IRSA) + Indemnités Exonérées - Avantages en Nature
+    const netAPayer =
+      salaireBrut -
+      cotisations.totalSalarie -
+      resultatImpot.totalImpot +
+      totalExonere -
+      totalAvantagesNature;
 
     // 9. Créer ou mettre à jour le bulletin
     let bulletin = await this.bulletinRepository.findOne({
@@ -346,7 +376,7 @@ export class BulletinService {
       await this.ligneBulletinService.create({
         bulletinUuid: bulletin.uuid,
         rubriqueUuid: salaireBaseRubrique.uuid,
-        base: null,
+        base: 173.33,
         taux: null,
         montantSalarie: Number(employe.salaireBaseMensuel) || 0,
         montantEmployeur: null,
@@ -361,11 +391,11 @@ export class BulletinService {
       await this.ligneBulletinService.create({
         bulletinUuid: bulletin.uuid,
         rubriqueUuid: item.rubrique.uuid,
-        base: item.variable.basePersonnalisee || null,
+        base: item.rubrique.modeCalcul === 'TAUX_HORAIRE' ? item.variable.montant : (item.variable.basePersonnalisee || null),
         taux: item.rubrique.pourcentageBase || null,
         montantSalarie: item.montantCalcule,
         montantEmployeur: null,
-        reference: item.rubrique.libelle,
+        reference: `${item.rubrique.libelle}${this.getAvantageInfo(item.rubrique)}`,
       });
     }
 
@@ -418,7 +448,7 @@ export class BulletinService {
     // 12. Sauvegarder le calcul IRSA
     await this.calculIrsaService.sauvegarderCalcul(
       bulletin.uuid,
-      baseImposable,
+      baseImposableIRSA,
       cotisations.totalSalarie,
       resultatImpot,
     );
@@ -573,5 +603,25 @@ export class BulletinService {
     }
 
     await this.bulletinRepository.delete({ uuid });
+  }
+
+  /**
+   * Retourne une chaîne d'information sur le statut de l'avantage
+   */
+  private getAvantageInfo(rubrique: any): string {
+    if (rubrique.type !== TypeRubrique.AVANTAGE_NATURE) return '';
+
+    const infos: string[] = [];
+    if (rubrique.estImposableIRSA) infos.push('Imposable');
+    else infos.push('Non imposable');
+
+    const cotisable =
+      rubrique.estCotisableCNaPS ||
+      rubrique.estCotisableOSTIE ||
+      rubrique.estCotisableFMFPR;
+    if (cotisable) infos.push('Cotisable');
+    else infos.push('Non cotisable');
+
+    return " (" + infos.join(', ') + ")";
   }
 }

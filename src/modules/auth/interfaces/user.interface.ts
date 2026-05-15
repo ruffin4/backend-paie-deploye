@@ -22,4 +22,5 @@ export interface IUserResponse {
   prenom?: string;
   role: UserRole;
   mustSetPassword: boolean;
+  invitationSent: boolean;
 }

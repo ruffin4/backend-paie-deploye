@@ -36,6 +36,9 @@ export class UserEntity {
   @Column({ name: 'must_set_password', default: false })
   mustSetPassword!: boolean;
 
+  @Column({ name: 'invitation_sent', default: false })
+  invitationSent!: boolean;
+
   @Column({ name: 'created_by', nullable: true })
   createdBy?: string;
 

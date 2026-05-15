@@ -21,6 +21,12 @@ export interface CotisationResult {
   tauxEmployeur: number;
 }
 
+export interface BasesCotisation {
+  cnaps?: number;
+  ostie?: number;
+  fmfpr?: number;
+}
+
 export interface CalculCotisationsResponse {
   brutTotal: number;
   brutImposable?: number;
@@ -200,18 +206,35 @@ export class CotisationService {
    * @param brutTotal Salaire brut total
    * @param brutImposable Salaire brut imposable (optionnel)
    * @param date Date de calcul (par défaut: aujourd'hui)
+   * @param bases Bases spécifiques par cotisation (optionnel)
    */
   async calculerCotisationsSociales(
     brutTotal: number,
     brutImposable?: number,
     date: Date = new Date(),
+    bases?: BasesCotisation,
   ): Promise<CalculCotisationsResponse> {
     const imposable = brutImposable ?? brutTotal;
 
     const [cnaps, ostie, fmfpr] = await Promise.all([
-      this.calculerCotisation('CNaPS', brutTotal, imposable, date),
-      this.calculerCotisation('OSTIE', brutTotal, imposable, date),
-      this.calculerCotisation('FMFPR', brutTotal, imposable, date),
+      this.calculerCotisation(
+        'CNaPS',
+        bases?.cnaps ?? brutTotal,
+        imposable,
+        date,
+      ),
+      this.calculerCotisation(
+        'OSTIE',
+        bases?.ostie ?? brutTotal,
+        imposable,
+        date,
+      ),
+      this.calculerCotisation(
+        'FMFPR',
+        bases?.fmfpr ?? brutTotal,
+        imposable,
+        date,
+      ),
     ]);
 
     const totalSalarie =
