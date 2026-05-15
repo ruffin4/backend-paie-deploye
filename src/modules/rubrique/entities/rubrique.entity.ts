@@ -41,7 +41,7 @@ export class RubriqueEntity {
   libelle!: string;
 
   @Column({ type: 'text', nullable: true })
-  description!: string;
+  description!: string | null;
 
   // Classification
   @Column({ type: 'enum', enum: TypeRubrique })
@@ -52,10 +52,10 @@ export class RubriqueEntity {
   modeCalcul!: ModeCalcul;
 
   @Column({ type: 'decimal', precision: 15, scale: 2, nullable: true })
-  valeurFixe!: number;
+  valeurFixe!: number | null;
 
   @Column({ type: 'decimal', precision: 5, scale: 2, nullable: true })
-  pourcentageBase!: number;
+  pourcentageBase!: number | null;
 
   // Règles fiscales et sociales
   @Column({ default: true })
