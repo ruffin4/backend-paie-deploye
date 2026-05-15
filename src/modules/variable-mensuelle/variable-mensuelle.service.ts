@@ -124,12 +124,20 @@ export class VariableMensuelleService {
     uuid: string,
     updateDto: UpdateVariableMensuelleDto,
   ): Promise<VariableMensuelleEntity> {
-    const variable = await this.findOne(uuid);
+    const variable = await this.variableRepository.findOne({ where: { uuid } });
+    if (!variable) {
+      throw new NotFoundException(`Variable avec l'UUID "${uuid}" non trouvée`);
+    }
+
     if (await this.periodeService.isClosed(variable.periodeUuid)) {
       throw new ForbiddenException('La période est clôturée');
     }
-    Object.assign(variable, updateDto);
-    return this.variableRepository.save(variable);
+
+    // Mise à jour directe en base
+    await this.variableRepository.update(uuid, updateDto);
+
+    // On recharge avec les relations pour le retour
+    return this.findOne(uuid);
   }
 
   async remove(uuid: string): Promise<void> {
