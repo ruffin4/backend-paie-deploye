@@ -194,6 +194,7 @@ export class BulletinService {
             type: true,
             modeCalcul: true,
             inclusDansBrut: true,
+            estImposableIRSA: true,
           },
         },
         calculIrsa: {

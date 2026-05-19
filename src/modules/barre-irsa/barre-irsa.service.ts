@@ -157,7 +157,7 @@ export class BarreIrsaService {
    * Calcule la décote pour enfants à charge
    * Règle:
    * - Décote de 2000 Ar par enfant à charge
-   * - L'impôt ne peut pas être inférieur à 2000 Ar
+   * - L'impôt ne peut jamais être inférieur à 3000 Ar (ni à zéro)
    * @param impotBrut Impôt calculé avant décote
    * @param nbEnfants Nombre d'enfants à charge
    */
@@ -170,7 +170,7 @@ export class BarreIrsaService {
     montantMinimal: number;
   } {
     const DECOTE_PAR_ENFANT = 2000;
-    const MONTANT_MINIMAL = 2000;
+    const MONTANT_MINIMAL = 3000; // L'IRSA ne peut jamais être inférieur à 3000 Ar
 
     // Calcul de la décote
     const decote = nbEnfants * DECOTE_PAR_ENFANT;
@@ -178,13 +178,8 @@ export class BarreIrsaService {
     // Application de la décote
     let impotFinal = impotBrut - decote;
 
-    // Si l'impôt devient négatif, on le ramène à 0
-    if (impotFinal < 0) {
-      impotFinal = 0;
-    }
-
-    // Vérification du montant minimal (2000 Ar)
-    if (impotFinal < MONTANT_MINIMAL && impotFinal > 0) {
+    // L'IRSA est toujours au minimum 3000 Ar (jamais 0)
+    if (impotFinal < MONTANT_MINIMAL) {
       impotFinal = MONTANT_MINIMAL;
     }
 
@@ -203,6 +198,8 @@ export class BarreIrsaService {
     nbEnfants: number = 0,
     date: Date = new Date(),
   ): Promise<ResultatCalculImpot> {
+    const MONTANT_MINIMAL_IRSA = 3000; // L'IRSA est toujours au minimum 3000 Ar
+
     const barre = await this.getActiveBarreForDate(date);
 
     if (barre.length === 0) {
@@ -253,16 +250,19 @@ export class BarreIrsaService {
       if (reste <= 0) break;
     }
 
-    // Appliquer la décote pour enfants
+    // Appliquer la décote pour enfants (minimum 3000 Ar garanti)
     const { impotFinal, decote, montantMinimal } = this.calculerImpotAvecDecote(
       totalImpot,
       nbEnfants,
     );
 
+    // Si la base imposable est <= 350 000 Ar (tranche à 0%), appliquer quand même le minimum
+    const impotFinalCorrected = Math.max(impotFinal, MONTANT_MINIMAL_IRSA);
+
     return {
-      totalImpot: impotFinal,
+      totalImpot: impotFinalCorrected,
       details,
-      totalImpotApresDecote: impotFinal,
+      totalImpotApresDecote: impotFinalCorrected,
       decote,
       montantMinimal,
       enfants: nbEnfants,
